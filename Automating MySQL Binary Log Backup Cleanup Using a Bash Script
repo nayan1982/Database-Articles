@@ -1,0 +1,209 @@
+# Automating MySQL Binary Log Backup Cleanup Using a Bash Script
+
+## Introduction
+
+MySQL binary logs (binlogs) are essential for point-in-time recovery (PITR), replication, and incremental backup strategies. Over time, these files accumulate and consume valuable disk space. Without a retention policy, backup storage can grow rapidly and impact server performance.
+
+This article demonstrates how to automate the cleanup of old MySQL binary log backups using a simple Bash script. The script removes binary log backup files older than **15 days** and records every cleanup operation in a log file for auditing purposes.
+
+
+# MySQL Binary Log Cleanup Script
+
+#!/bin/bash
+
+# Backup directory containing copied MySQL binary logs
+BACKUP_DIR="/u01/db_backup/incremental"
+
+# Retention period (days)
+RETENTION_DAYS=15
+
+# Cleanup log
+LOGFILE="/u01/db_backup/mysql_binlog_cleanup.log"
+
+{
+echo "===== $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+find "$BACKUP_DIR" \
+    -type f \
+    -name "binlog.*" \
+    -mtime +${RETENTION_DAYS} \
+    -exec ls -lh --time-style="+%Y-%m-%d %H:%M:%S" {} \; \
+    -delete
+
+echo
+} >> "$LOGFILE" 2>&1
+
+
+# How the Script Works
+
+The script performs the following tasks:
+
+1. Defines the directory where MySQL binary log backups are stored.
+2. Sets the retention period to **15 days**.
+3. Creates or appends to a cleanup log file.
+4. Searches for binary log backup files older than the retention period.
+5. Logs details of each file before deletion.
+6. Deletes the expired files.
+7. Redirects all output and errors to a log file.
+
+
+# Configuration Variables
+
+## Backup Directory
+
+BACKUP_DIR="/u01/db_backup/incremental"
+
+This is the location where copied MySQL binary log backups are stored.
+
+Example:
+
+/u01/db_backup/
+└── incremental/
+    ├── binlog.000001
+    ├── binlog.000002
+    ├── binlog.000003
+    └── ...
+
+## Retention Period
+
+RETENTION_DAYS=15
+
+The script deletes only files older than **15 days**.
+
+You can change the value according to your organization's backup policy.
+
+| Retention Period | Configuration       |
+| ---------------- | ------------------- |
+| 7 Days           | `RETENTION_DAYS=7`  |
+| 15 Days          | `RETENTION_DAYS=15` |
+| 30 Days          | `RETENTION_DAYS=30` |
+| 90 Days          | `RETENTION_DAYS=90` |
+
+
+## Log File
+
+LOGFILE="/u01/db_backup/mysql_binlog_cleanup.log"
+
+Each execution appends its output to this log file.
+
+The log records:
+
+* Cleanup execution time
+* Deleted files
+* File size
+* File modification date
+* Any execution errors
+
+# Timestamp Logging
+
+Each cleanup session begins with a timestamp.
+
+echo "===== $(date '+%Y-%m-%d %H:%M:%S') ====="
+
+Example:
+===== 2026-07-07 02:00:00 =====
+
+
+This allows administrators to distinguish individual cleanup operations.
+
+# Finding Old Binary Log Backups
+
+The core command is:
+
+find "$BACKUP_DIR" \
+    -type f \
+    -name "binlog.*" \
+    -mtime +${RETENTION_DAYS}
+
+### Explanation
+
+| Option             | Description                    |
+| ------------------ | ------------------------------ |
+| `find`             | Searches for files             |
+| `-type f`          | Regular files only             |
+| `-name "binlog.*"` | Matches MySQL binary log files |
+| `-mtime +15`       | Older than 15 days             |
+
+# Logging Deleted Files
+
+Before removing each file, the script records its details.
+
+
+-exec ls -lh --time-style="+%Y-%m-%d %H:%M:%S" {} \;
+
+Example output:
+
+-rw-r--r-- 1 mysql mysql 128M 2026-06-20 01:00:00 /u01/db_backup/incremental/binlog.000231
+
+
+The log includes:
+
+* File permissions
+* Owner
+* Group
+* File size
+* Last modification time
+* Full file path
+
+This creates a useful audit trail for administrators.
+
+# Deleting Expired Files
+
+After logging the file details, the script removes the file.
+
+-delete
+
+
+The deletion is permanent, so ensure that the retention period matches your recovery requirements.
+
+
+# Example Cleanup Log
+
+===== 2026-07-07 02:00:00 =====
+
+-rw-r--r-- 1 mysql mysql 118M 2026-06-18 01:00:00 /u01/db_backup/incremental/binlog.000451
+-rw-r--r-- 1 mysql mysql 121M 2026-06-18 02:00:00 /u01/db_backup/incremental/binlog.000452
+-rw-r--r-- 1 mysql mysql 119M 2026-06-18 03:00:00 /u01/db_backup/incremental/binlog.000453
+
+# Making the Script Executable
+
+Grant execute permission to the script.
+
+chmod +x /home/mysql_delete_binlog_backup.sh
+
+
+# Automating with Cron
+
+Schedule the script to run every day at **2:00 AM**.
+
+0 2 * * * /bin/bash /home/mysql_delete_binlog_backup.sh
+
+Verify the cron configuration:
+
+crontab -l
+
+# Benefits of Automation
+
+Using this cleanup script provides several advantages:
+
+* Automatically removes expired binary log backups.
+* Prevents backup storage from filling up.
+* Enforces a consistent retention policy.
+* Maintains detailed audit logs.
+* Reduces manual administrative work.
+* Helps ensure long-term storage efficiency.
+
+# Best Practices
+
+* Verify that binary logs older than the retention period are no longer required for recovery.
+* Test the script in a non-production environment before deployment.
+* Monitor the cleanup log regularly for errors.
+* Ensure the script has appropriate file permissions.
+* Schedule cleanup during off-peak hours.
+* Periodically review the retention period based on business and compliance requirements.
+
+# Conclusion
+
+Managing MySQL binary log backups is an important aspect of database administration. As incremental backup files accumulate, they can quickly consume storage if not cleaned up regularly. The Bash script presented in this article provides a simple and reliable solution for enforcing a **15-day retention policy**.
+
+By combining automated cleanup, detailed logging, and scheduled execution through cron, database administrators can maintain an organized backup repository, optimize storage usage, and reduce operational overhead while ensuring that backup retention aligns with organizational recovery and compliance requirements.
