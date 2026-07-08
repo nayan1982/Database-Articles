@@ -1,0 +1,308 @@
+MySQL Router:
+
+MySQL Router is a lightweight middleware application developed by Oracle specifically for MySQL InnoDB Cluster.
+
+It is not a database server and does not store application data. Instead, it functions as an intelligent connection router that accepts client connections and forwards them to the appropriate database node based on the cluster's metadata.
+
+In simple terms,
+
+MySQL Router is an intelligent traffic controller that sits between client applications and the MySQL InnoDB Cluster.
+
+Because Router continuously monitors the cluster metadata, it always knows which server is currently the Primary and which servers are available as Secondaries.
+
+How MySQL Router Works
+
+Instead of allowing applications to connect directly to database servers, MySQL Router becomes the single connection endpoint.
+
+Whenever a client establishes a database connection, Router performs the following tasks automatically:
+
+Retrieves cluster metadata.
+
+Identifies the current Primary server.
+
+Routes write requests to the Primary.
+
+Routes read requests to available Secondary servers.
+
+Detects cluster topology changes.
+
+Redirects new connections to the newly elected Primary after a failover.
+
+This process is completely transparent to client applications.
+
+Applications continue using the same connection endpoint regardless of changes within the database cluster.
+
+MySQL Router Architecture
+
+                   +----------------------+
+                   |   Client Application |
+                   +----------+-----------+
+                              |
+                              |
+                     +--------v--------+
+                     |   MySQL Router  |
+                     +--------+--------+
+                              |
+          +-------------------+-------------------+
+          |                                       |
+   Read/Write (6446)                      Read Only (6447)
+          |                                       |
+          |                                       |
+     +----v----+                          +-------v-------+
+     | PRIMARY |                          | SECONDARY(S)  |
+     +---------+                          +---------------+
+
+Architecture Explanation
+
+As illustrated above, client applications never communicate directly with the database servers.
+
+Instead:
+
+All client connections are established with MySQL Router.
+
+Write requests received on Port 6446 are forwarded to the current Primary server.
+
+Read requests received on Port 6447 are distributed among available Secondary servers.
+
+If the Primary changes because of an automatic failover, Router immediately begins directing new write connections to the newly elected Primary without requiring any application changes.
+
+This abstraction layer greatly simplifies application development while improving database availability.
+
+Key Responsibilities of MySQL Router
+
+MySQL Router performs several critical functions within an InnoDB Cluster environment:
+
+Automatically routes write traffic to the Primary server.
+
+Automatically routes read traffic to Secondary servers.
+
+Continuously monitors cluster metadata.
+
+Detects topology changes and failover events.
+
+Hides cluster complexity from client applications.
+
+Supports workload distribution across multiple servers.
+
+Improves overall database availability.
+
+Simplifies application connectivity.
+
+Benefits of Using MySQL Router
+
+Deploying MySQL Router in an enterprise environment offers numerous operational advantages.
+
+1. Automatic Failover
+
+If the Primary server becomes unavailable, Router automatically redirects new write connections to the newly elected Primary without requiring any manual intervention.
+
+2. Read/Write Separation
+
+Write operations are always directed to the Primary server, while read operations are automatically routed to Secondary servers.
+
+This separation significantly reduces workload on the Primary server and improves cluster performance.
+
+3. Simplified Application Design
+
+Applications no longer need logic to discover the current Primary server.
+
+Developers only configure a single Router endpoint.
+
+4. High Availability
+
+Database failover becomes transparent to client applications, minimizing downtime and improving service continuity.
+
+5. Improved Scalability
+
+Additional Secondary servers can be added to the cluster without modifying application configurations.
+
+Router automatically recognizes new cluster members.
+
+Deployment Options
+
+MySQL Router can be deployed using several architectures depending on business requirements.
+
+Option 1 – Router Installed on the Database Server
+
+Application
+      │
+      ▼
+MySQL Router
+      │
+      ▼
+MySQL Server
+
+Advantages
+
+Simple installation
+
+Minimal infrastructure
+
+Suitable for development and testing environments
+
+Limitations
+
+Additional workload on the database server
+
+Potential single point of failure
+
+Option 2 – Dedicated Router Server (Recommended)
+
+Application
+      │
+      ▼
+ MySQL Router Server
+      │
+      ▼
+ MySQL InnoDB Cluster
+
+Advantages
+
+Recommended for production deployments
+
+Offloads routing tasks from database servers
+
+Easier to scale independently
+
+Improved security and maintainability
+
+Option 3 – Multiple Router Servers (Enterprise High Availability)
+
+              Load Balancer
+                    │
+     ┌──────────────┴──────────────┐
+     ▼                             ▼
+Router-1                      Router-2
+     │                             │
+     └──────────────┬──────────────┘
+                    ▼
+           MySQL InnoDB Cluster
+
+This architecture eliminates MySQL Router as a single point of failure and provides maximum availability for enterprise workloads.
+
+Prerequisites
+
+Before installing MySQL Router, verify that the following requirements have been met:
+
+MySQL Server is installed.
+
+MySQL InnoDB Cluster has been successfully configured.
+
+A Cluster Administrator account (for example, clusteradmin) exists.
+
+All cluster nodes can communicate with one another.
+
+Firewall rules permit MySQL traffic.
+
+Hostname resolution (DNS or /etc/hosts) is functioning correctly.
+
+Network connectivity between Router and all cluster nodes has been verified.
+
+Step 1 – Install MySQL Router
+
+Install MySQL Router using the operating system package manager.
+
+dnf install mysql-router -y
+
+After the installation completes, verify the installed version.
+
+mysqlrouter --version
+
+If the version information is displayed successfully, the installation has completed correctly.
+
+Step 2 – Create the Router Operating System User
+
+For security reasons, MySQL Router should never run as the root user.
+
+Instead, create a dedicated operating system account.
+
+id mysqlrouter || useradd -r -s /sbin/nologin mysqlrouter
+
+This command first checks whether the mysqlrouter user already exists.
+
+If it does not exist, a new system account is created.
+
+Parameter explanation:
+
+-r creates a system account.
+
+-s /sbin/nologin prevents interactive login.
+
+Using a dedicated service account is considered an enterprise security best practice.
+
+Step 3 – Bootstrap MySQL Router
+
+After installation, MySQL Router has no knowledge of the InnoDB Cluster.
+
+The bootstrap process retrieves cluster metadata and automatically configures the Router.
+
+Execute the following command:
+
+mysqlrouter --bootstrap clusteradmin@node1:3306 --user=mysqlrouter
+
+Where:
+
+clusteradmin is the Cluster Administrator account.
+
+node1 is any active MySQL server within the cluster.
+
+3306 is the MySQL Server port.
+
+--user=mysqlrouter specifies the operating system account under which the Router service will run.
+
+You will be prompted to enter the Cluster Administrator password.
+
+Once authentication succeeds, the bootstrap process begins.
+
+What Does Bootstrap Do?
+
+Bootstrap is the most important configuration step for MySQL Router.
+
+During this process, Router automatically performs the following tasks:
+
+Retrieves cluster metadata.
+
+Creates an internal Router account inside MySQL.
+
+Stores authentication credentials securely.
+
+Generates the Router configuration file.
+
+Configures routing ports.
+
+Creates runtime directories.
+
+Configures logging.
+
+Initializes metadata cache services.
+
+In other words, nearly all Router configuration is completed automatically through a single command.
+
+Generated Configuration Files
+
+After a successful bootstrap, the primary configuration file is created at:
+
+/etc/mysqlrouter/mysqlrouter.conf
+
+A backup copy is also generated:
+
+/etc/mysqlrouter/mysqlrouter.conf.bak
+
+In production environments, these configuration files should be included in regular backup procedures.
+
+Step 4 – Start the MySQL Router Service
+
+Start the Router service.
+
+systemctl start mysqlrouter
+
+Enable the service to start automatically after system boot.
+
+systemctl enable mysqlrouter
+
+Verify the current service status.
+
+systemctl status mysqlrouter
+
+If the service status displays active (running), MySQL Router has started successfully and is ready for configuration validation.
+
