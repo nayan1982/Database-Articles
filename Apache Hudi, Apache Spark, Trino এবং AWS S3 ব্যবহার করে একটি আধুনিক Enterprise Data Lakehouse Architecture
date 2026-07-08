@@ -1,0 +1,430 @@
+ভূমিকা
+
+বর্তমান ডিজিটাল যুগে প্রতিদিন বিপুল পরিমাণ ডেটা বিভিন্ন অ্যাপ্লিকেশন, ওয়েবসাইট, ERP, CRM, ডাটাবেস এবং API থেকে তৈরি হচ্ছে। এই বিপুল পরিমাণ ডেটা সংগ্রহ, সংরক্ষণ, প্রক্রিয়াকরণ এবং বিশ্লেষণের জন্য শুধুমাত্র একটি রিলেশনাল ডাটাবেস যথেষ্ট নয়।
+
+এ কারণেই বর্তমানে Data Lakehouse Architecture অত্যন্ত জনপ্রিয়। এটি Data Lake-এর স্কেলেবিলিটি এবং Data Warehouse-এর পারফরম্যান্স ও নির্ভরযোগ্যতাকে একত্রিত করে একটি শক্তিশালী ডেটা প্ল্যাটফর্ম তৈরি করে।
+
+এই আর্টিকেলে আমরা এমন একটি Enterprise Data Lakehouse Architecture নিয়ে আলোচনা করব যেখানে ব্যবহৃত হয়েছে—
+
+Apache Airflow
+Apache Spark
+Apache Hudi
+Hadoop Cluster
+Hive Metastore
+Trino
+AWS S3
+AWS Glacier
+Apache Ranger
+Apache Atlas
+Prometheus
+Grafana
+ELK Stack
+Architecture Overview
+
+এই আর্কিটেকচারটি মোট ১৩টি প্রধান লেয়ারে বিভক্ত।
+
+Data Sources
+Workflow Orchestration
+Data Ingestion Layer
+Raw Landing Zone (AWS S3)
+Data Processing Layer
+Lakehouse Storage (Apache Hudi)
+Hadoop Cluster
+Hive Metastore
+Trino Query Engine
+Business Intelligence
+AI / ML
+Governance & Security
+Monitoring, Logging & Archive
+১. Data Sources
+
+সকল ডেটার উৎস হচ্ছে বিভিন্ন ব্যবসায়িক অ্যাপ্লিকেশন এবং সিস্টেম।
+
+উদাহরণস্বরূপ—
+
+Mobile Application
+Web Application
+ERP System
+CRM System
+Oracle Database
+MySQL
+PostgreSQL
+REST API
+Event Logs
+
+এগুলো থেকে প্রতিনিয়ত Transactional Data এবং Analytical Data তৈরি হয়।
+
+২. Workflow Orchestration (Apache Airflow)
+
+পুরো Data Pipeline পরিচালনার জন্য ব্যবহার করা হয়েছে Apache Airflow।
+
+Airflow-এর প্রধান কাজগুলো হলো—
+
+Data Pipeline Scheduling
+Spark Job Trigger
+ETL Workflow
+Dependency Management
+Retry Mechanism
+Monitoring
+Alerting
+
+Airflow ব্যবহার করলে প্রতিটি ETL Process স্বয়ংক্রিয়ভাবে নির্দিষ্ট সময়ে চালানো যায়।
+
+সুবিধা
+Manual Operation কমে যায়
+Pipeline Automation
+DAG ভিত্তিক Workflow
+Error Recovery
+Centralized Monitoring
+৩. Data Ingestion Layer
+
+এই লেয়ারের কাজ হলো বিভিন্ন উৎস থেকে ডেটা সংগ্রহ করা।
+
+এখানে দুই ধরনের Data Ingestion ব্যবহৃত হয়েছে।
+
+Batch Ingestion
+
+Batch Data সংগ্রহের জন্য ব্যবহৃত হয়—
+
+Apache Sqoop
+Airbyte
+Database Export
+REST API
+
+যেসব ডেটা নির্দিষ্ট সময় পরপর আসে সেগুলো Batch Processing এর মাধ্যমে সংগ্রহ করা হয়।
+
+যেমন—
+
+Customer Data
+Product Information
+Daily Sales
+Inventory
+Streaming Ingestion
+
+Real-time Data সংগ্রহের জন্য ব্যবহৃত হয়—
+
+Apache Kafka
+Debezium CDC
+
+এর মাধ্যমে Database Change Data Capture (CDC) এবং Event Streaming করা যায়।
+
+উদাহরণ—
+
+Payment
+Order
+Login Event
+User Activity
+Transaction
+৪. Raw Landing Zone (AWS S3)
+
+সমস্ত Incoming Data প্রথমে Amazon S3-এ সংরক্ষণ করা হয়।
+
+এখানে ডেটা থাকে সম্পূর্ণ Raw Format-এ।
+
+যেমন—
+
+CSV
+JSON
+Avro
+Parquet
+Log Files
+সুবিধা
+Unlimited Storage
+High Durability
+Low Cost
+Object Storage
+
+এটি Data Lake-এর প্রথম স্তর হিসেবে কাজ করে।
+
+৫. Data Processing Layer (Apache Spark)
+
+AWS S3-তে সংরক্ষিত Raw Data Spark Cluster ব্যবহার করে প্রসেস করা হয়।
+
+Spark-এর কাজগুলো হলো—
+
+ETL
+ELT
+Data Cleaning
+Data Validation
+Aggregation
+Data Transformation
+Feature Engineering
+Machine Learning Preparation
+
+Spark Distributed Computing ব্যবহার করে একাধিক Worker Node-এ সমান্তরালভাবে কাজ সম্পন্ন করে।
+
+Processing Flow
+Read Raw Data
+      │
+      ▼
+Clean Data
+      │
+      ▼
+Validate Data
+      │
+      ▼
+Transform Data
+      │
+      ▼
+Aggregate Data
+      │
+      ▼
+Store into Hudi
+৬. Lakehouse Storage (Apache Hudi)
+
+Spark দ্বারা প্রসেসকৃত ডেটা Apache Hudi-তে সংরক্ষণ করা হয়।
+
+Apache Hudi একটি Transactional Data Lake।
+
+এখানে তিনটি Logical Layer ব্যবহৃত হয়েছে।
+
+Bronze Layer
+
+এখানে Raw Data সংরক্ষণ করা হয়।
+
+বৈশিষ্ট্য
+
+Original Data
+Immutable
+Historical Archive
+Silver Layer
+
+এখানে Data Cleaning এবং Validation সম্পন্ন হয়।
+
+যেমন—
+
+Duplicate Remove
+Null Handling
+Data Standardization
+Data Quality Check
+Gold Layer
+
+এখানে Business Ready Dataset তৈরি হয়।
+
+যেমন—
+
+Sales Summary
+Customer 360
+Financial Report
+KPI Dataset
+Dashboard Data
+Apache Hudi-এর সুবিধা
+ACID Transaction
+Upsert
+Delete
+Incremental Query
+Time Travel
+Schema Evolution
+৭. Distributed Storage & Compute (Hadoop Cluster)
+
+এই আর্কিটেকচারে Hadoop Cluster ব্যবহার করা হয়েছে।
+
+Cluster-এ রয়েছে—
+
+Hadoop Master
+Hadoop Worker 1
+Hadoop Worker 2
+Hadoop Worker N
+
+এর মাধ্যমে—
+
+HDFS Storage
+Distributed Processing
+Fault Tolerance
+Horizontal Scaling
+
+সহজেই নতুন Worker যুক্ত করে Cluster বড় করা যায়।
+
+৮. Hive Metastore
+
+Hive Metastore পুরো Data Lake-এর Metadata Repository হিসেবে কাজ করে।
+
+এখানে সংরক্ষিত হয়—
+
+Database
+Table
+Schema
+Partition
+Storage Location
+
+ফলে Trino এবং অন্যান্য Query Engine সহজেই Table Access করতে পারে।
+
+৯. Trino Query Engine
+
+Trino একটি High Performance Distributed SQL Engine।
+
+এটি সরাসরি Hudi Data Lake থেকে Query করতে পারে।
+
+এছাড়াও Query করতে পারে—
+
+MySQL
+PostgreSQL
+Oracle
+Hive
+AWS S3
+সুবিধা
+ANSI SQL
+Fast Analytics
+Federated Query
+High Concurrency
+১০. Business Intelligence
+
+Business User-দের জন্য Dashboard তৈরিতে ব্যবহৃত হয়েছে—
+
+Power BI
+Apache Superset
+Metabase
+
+এই টুলগুলো Trino-এর সাথে সংযুক্ত হয়ে বিভিন্ন রিপোর্ট তৈরি করে।
+
+যেমন—
+
+Sales Dashboard
+Revenue Dashboard
+Operational Report
+Executive KPI
+১১. Artificial Intelligence (AI/ML)
+
+Gold Layer-এর Curated Dataset Machine Learning-এর জন্য ব্যবহৃত হয়।
+
+উদাহরণ—
+
+Fraud Detection
+Recommendation Engine
+Demand Forecasting
+Customer Segmentation
+Churn Prediction
+
+উচ্চ মানের ডেটা থাকায় AI Model-এর Accuracy বৃদ্ধি পায়।
+
+১২. Governance & Security
+
+Enterprise পরিবেশে Data Security অত্যন্ত গুরুত্বপূর্ণ।
+
+এই Architecture-এ ব্যবহৃত হয়েছে—
+
+Metadata Catalog
+Apache Atlas
+AWS Glue
+
+যার মাধ্যমে পাওয়া যায়—
+
+Data Lineage
+Metadata Search
+Impact Analysis
+Access Control
+
+Apache Ranger ব্যবহার করে—
+
+Role Based Access
+Row Level Security
+Column Masking
+Audit Log
+
+প্রয়োগ করা যায়।
+
+Authentication
+
+Authentication পরিচালিত হয়—
+
+Kerberos
+AWS IAM
+
+এর মাধ্যমে নিরাপদভাবে ব্যবহারকারীদের Authentication এবং Authorization নিশ্চিত করা হয়।
+
+১৩. Data Quality Monitoring
+
+Data Pipeline-এর প্রতিটি ধাপে Data Quality পরীক্ষা করা হয়।
+
+যেমন—
+
+Duplicate Record
+Missing Value
+Invalid Data
+Schema Validation
+Business Rule Validation
+
+এজন্য ব্যবহৃত হয়েছে—
+
+Great Expectations
+Prometheus
+Grafana
+
+এগুলো Platform-এর Health Monitoring এবং Alerting-ও প্রদান করে।
+
+১৪. Observability & Logging
+
+সিস্টেমের সকল Log সংগ্রহ এবং বিশ্লেষণের জন্য ব্যবহৃত হয়েছে—
+
+ELK Stack
+OpenSearch
+
+এর মাধ্যমে—
+
+Spark Log
+Airflow Log
+Kafka Log
+System Log
+Error Analysis
+
+একটি কেন্দ্রীয় প্ল্যাটফর্মে পর্যবেক্ষণ করা যায়।
+
+১৫. Archive & Cold Storage
+
+পুরনো ডেটা Lifecycle Policy-এর মাধ্যমে Amazon S3 থেকে AWS Glacier-এ স্থানান্তর করা হয়।
+
+এর সুবিধা—
+
+Storage Cost কমে
+Long-term Archive
+Regulatory Compliance
+Disaster Recovery
+End-to-End Data Flow
+Business Applications
+        │
+        ▼
+Data Ingestion
+(Batch / Streaming)
+        │
+        ▼
+AWS S3 Landing Zone
+        │
+        ▼
+Apache Spark Processing
+        │
+        ▼
+Apache Hudi Lakehouse
+(Bronze → Silver → Gold)
+        │
+        ▼
+Hadoop Cluster
+        │
+        ├─────────────┐
+        ▼             ▼
+Hive Metastore     Trino
+                     │
+       ┌─────────────┼─────────────┐
+       ▼             ▼             ▼
+ Power BI      Apache Superset   Metabase
+                     │
+                     ▼
+                  AI / ML
+
+এই Architecture-এর প্রধান সুবিধাসমূহ
+Scalable Architecture: প্রয়োজন অনুযায়ী নতুন Hadoop Worker Node যুক্ত করে সহজেই Storage ও Compute ক্ষমতা বাড়ানো যায়।
+Real-time এবং Batch Processing: একই প্ল্যাটফর্মে Batch Data ও Streaming Data উভয়ই পরিচালনা করা সম্ভব।
+Transactional Data Lake: Apache Hudi ACID Transaction, Upsert, Delete এবং Incremental Query সুবিধা প্রদান করে।
+Fast SQL Analytics: Trino-এর মাধ্যমে Hudi, Hive এবং বিভিন্ন Relational Database-এর উপর দ্রুত SQL Query চালানো যায়।
+Workflow Automation: Apache Airflow সম্পূর্ণ Data Pipeline স্বয়ংক্রিয়ভাবে পরিচালনা করে।
+Data Governance: Apache Atlas, Apache Ranger, Kerberos এবং IAM-এর মাধ্যমে নিরাপদ ও নিয়ন্ত্রিত ডেটা ব্যবস্থাপনা নিশ্চিত করা যায়।
+Data Quality ও Monitoring: Great Expectations, Prometheus এবং Grafana ব্যবহার করে ডেটার মান এবং সিস্টেমের স্বাস্থ্য নিয়মিত পর্যবেক্ষণ করা যায়।
+Centralized Logging: ELK Stack/OpenSearch-এর মাধ্যমে সকল লগ কেন্দ্রীয়ভাবে বিশ্লেষণ করা যায়।
+Business Intelligence: Power BI, Apache Superset এবং Metabase-এর মাধ্যমে ইন্টারঅ্যাকটিভ রিপোর্ট ও ড্যাশবোর্ড তৈরি করা যায়।
+AI/ML Ready Platform: Gold Layer-এর মানসম্মত ডেটা Machine Learning ও AI মডেল তৈরির জন্য প্রস্তুত থাকে।
+Cost Optimization: Lifecycle Policy ব্যবহার করে পুরনো ডেটা AWS Glacier-এ স্থানান্তর করে দীর্ঘমেয়াদী সংরক্ষণ খরচ কমানো যায়।
+
+উপসংহার
+
+এই আধুনিক Enterprise Data Lakehouse Architecture একটি পূর্ণাঙ্গ, স্কেলযোগ্য এবং ভবিষ্যৎ-প্রস্তুত ডেটা প্ল্যাটফর্ম। Amazon S3-এর উপর ভিত্তি করে Apache Spark, Apache Hudi, Hadoop, Hive Metastore, Trino এবং Apache Airflow-এর সমন্বয়ে এটি বড় আকারের ডেটা সংগ্রহ, প্রক্রিয়াকরণ, সংরক্ষণ এবং বিশ্লেষণের জন্য একটি শক্তিশালী সমাধান প্রদান করে।
+
+এছাড়াও Apache Atlas, Ranger, Prometheus, Grafana এবং ELK Stack-এর মতো প্রযুক্তি যুক্ত হওয়ায় এই প্ল্যাটফর্মটি কেবলমাত্র একটি Data Lake নয়; বরং এটি একটি সম্পূর্ণ Enterprise Data Lakehouse Ecosystem যা Business Intelligence, Advanced Analytics, Artificial Intelligence এবং Machine Learning-এর জন্য নির্ভরযোগ্য ভিত্তি হিসেবে কাজ করতে সক্ষম।
