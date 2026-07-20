@@ -1,0 +1,293 @@
+# MySQL InnoDB Cluster (Group Replication)-এ Database Restore করার সময় সাধারণ সমস্যাসমূহ ও সমাধান
+
+## ভূমিকা
+
+অনেক সময় আমরা `mysqldump` ব্যবহার করে একটি MySQL Database-এর Logical Backup নিয়ে সেটি **MySQL InnoDB Cluster (Group Replication)**-এ Restore করার চেষ্টা করি। কিন্তু Standalone MySQL Server-এ যে Dump File কোনো সমস্যা ছাড়াই Restore হয়, একই Dump InnoDB Cluster-এ Restore করতে গেলে বিভিন্ন Error দেখা যায়।
+
+এই আর্টিকেলে সেই সমস্যাগুলোর কারণ এবং সমাধান ধাপে ধাপে আলোচনা করা হয়েছে।
+
+**পরিবেশ (Environment)**
+
+* MySQL Community Server 8.0.x
+* MySQL InnoDB Cluster
+* Group Replication
+* Logical Backup (mysqldump)
+
+উদাহরণ হিসেবে নিচের Database গুলো ব্যবহার করা হয়েছে।
+
+* sales_core
+* sales_customer
+* sales_payment
+* sales_audit
+
+
+# সমস্যা–১ : GTID_PURGED Error
+
+Restore করার সময় নিচের Error দেখা যেতে পারে।
+
+
+ERROR 3911 (HY000): Cannot update GTID_PURGED with the Group Replication plugin running
+
+
+## কারণ
+
+`mysqldump` সাধারণত Dump File-এর শুরুতে নিচের মতো একটি Statement যোগ করে।
+
+
+SET @@GLOBAL.GTID_PURGED='xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx';
+
+
+কিন্তু InnoDB Cluster-এ Group Replication নিজেই GTID পরিচালনা করে। এজন্য Restore চলাকালীন `GTID_PURGED` পরিবর্তন করা যায় না।
+
+
+
+## সমাধান
+
+Dump File থেকে `GTID_PURGED` Statement মুছে ফেলতে হবে।
+
+
+sed -i '/GTID_PURGED/d' sales_core.sql
+
+
+একাধিক Database-এর জন্য
+
+
+sed -i '/GTID_PURGED/d' sales_core.sql
+sed -i '/GTID_PURGED/d' sales_customer.sql
+sed -i '/GTID_PURGED/d' sales_payment.sql
+sed -i '/GTID_PURGED/d' sales_audit.sql
+
+
+যাচাই করুন:
+
+grep -n GTID_PURGED sales_core.sql
+
+
+কোনো Output না আসলে বুঝবেন Statement সফলভাবে Remove হয়েছে।
+
+
+
+# সমস্যা–২ : Restore সফল হলেও Secondary Node-এ Data আসে না
+
+অনেক সময় Restore সফলভাবে সম্পন্ন হয়।
+
+Primary Node-এ Table এবং Data দেখা যায়।
+
+কিন্তু Secondary Node-এ Database ফাঁকা থাকে।
+
+
+
+## কারণ
+
+Dump File-এর শুরুতে সাধারণত নিচের Statement থাকে।
+
+
+SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
+SET @@SESSION.SQL_LOG_BIN = 0;
+
+
+এটি Restore চলাকালীন Binary Logging বন্ধ করে দেয়।
+
+কিন্তু Group Replication Binary Log-এর মাধ্যমে Data Synchronize করে।
+
+ফলে Restore হওয়া Data শুধুমাত্র Primary Node-এ থাকে।
+
+
+
+## সমাধান
+
+Dump File থেকে SQL_LOG_BIN Statement Remove করতে হবে।
+
+
+sed -i '/MYSQLDUMP_TEMP_LOG_BIN/d;/SQL_LOG_BIN/d' sales_core.sql
+
+
+একাধিক Database-এর জন্য
+
+
+sed -i '/MYSQLDUMP_TEMP_LOG_BIN/d;/SQL_LOG_BIN/d' sales_core.sql
+sed -i '/MYSQLDUMP_TEMP_LOG_BIN/d;/SQL_LOG_BIN/d' sales_customer.sql
+sed -i '/MYSQLDUMP_TEMP_LOG_BIN/d;/SQL_LOG_BIN/d' sales_payment.sql
+sed -i '/MYSQLDUMP_TEMP_LOG_BIN/d;/SQL_LOG_BIN/d' sales_audit.sql
+
+
+যাচাই করুন:
+
+grep -n SQL_LOG_BIN sales_core.sql
+
+
+যদি কোনো Output না আসে তাহলে Dump File প্রস্তুত।
+
+
+
+# সমস্যা–৩ : ERROR 3098
+
+Restore করার সময় নিচের Error দেখা যেতে পারে।
+
+
+ERROR 3098 (HY000):
+The table does not comply with the requirements by an external plugin.
+
+
+## কারণ
+
+MySQL Group Replication-এ প্রতিটি InnoDB Table-এর একটি Primary Key থাকা উচিত।
+
+অনেক পুরোনো Application বা Legacy Schema-তে Primary Key থাকে না।
+
+উদাহরণ
+
+
+CREATE TABLE region (
+    id INT NOT NULL,
+    region_name VARCHAR(50)
+);
+
+
+Standalone MySQL-এ এটি বৈধ হলেও Group Replication এটি গ্রহণ করবে না।
+
+
+
+# সমাধান–১ : Primary Key যোগ করা
+
+আগে
+
+
+CREATE TABLE region (
+    id INT NOT NULL,
+    region_name VARCHAR(50)
+);
+
+
+পরিবর্তন করে
+CREATE TABLE region (
+    id INT NOT NULL,
+    region_name VARCHAR(50),
+    PRIMARY KEY(id)
+);
+
+
+
+
+# সমাধান–২ : Mapping Table-এর জন্য Composite Primary Key
+
+অনেক Table দুইটি Foreign Key দিয়ে Relationship তৈরি করে।
+
+যেমন
+CREATE TABLE product_category_mapping (
+    product_id INT NOT NULL,
+    category_id INT NOT NULL,
+    created_at DATETIME
+);
+
+
+এক্ষেত্রে সঠিক Primary Key হবে
+
+CREATE TABLE product_category_mapping (
+    product_id INT NOT NULL,
+    category_id INT NOT NULL,
+    created_at DATETIME,
+
+    PRIMARY KEY(product_id, category_id)
+);
+
+
+এটি Group Replication-এর জন্য সর্বোত্তম পদ্ধতি।
+
+# যেসব Table-এ Primary Key নেই সেগুলো বের করার উপায়
+awk '
+/CREATE TABLE/ {table=$3}
+/PRIMARY KEY/ {pk=1}
+/ENGINE=InnoDB/ {
+    if(pk==0) print table
+    pk=0
+}' sales_core.sql
+
+
+উদাহরণ Output
+
+
+region
+city
+warehouse
+product_category_mapping
+employee_department_mapping
+
+# Database Restore
+
+
+mysql -u root -p sales_core < sales_core.sql
+mysql -u root -p sales_customer < sales_customer.sql
+mysql -u root -p sales_payment < sales_payment.sql
+mysql -u root -p sales_audit < sales_audit.sql
+
+
+# Replication পরীক্ষা
+
+Primary Node-এ
+CREATE TABLE replication_test(
+    id INT PRIMARY KEY
+);
+
+INSERT INTO replication_test VALUES(1);
+
+
+Secondary Node-এ
+
+
+SHOW TABLES;
+
+SELECT * FROM replication_test;
+
+
+যদি Table এবং Data দেখা যায়, তাহলে Group Replication সঠিকভাবে কাজ করছে।
+
+
+
+# Dump File Pre-processing Script
+
+
+#!/bin/bash
+
+FILES=(
+sales_core.sql
+sales_customer.sql
+sales_payment.sql
+sales_audit.sql
+)
+
+for FILE in "${FILES[@]}"
+do
+    echo "Processing $FILE"
+
+    sed -i '/GTID_PURGED/d' "$FILE"
+    sed -i '/MYSQLDUMP_TEMP_LOG_BIN/d;/SQL_LOG_BIN/d' "$FILE"
+
+    echo "Completed $FILE"
+done
+
+
+
+
+# Best Practices
+
+* InnoDB Cluster-এ Restore করার আগে সবসময় `GTID_PURGED` Remove করুন।
+* `SQL_LOG_BIN` Statement Remove করুন, যাতে Restore হওয়া Data সকল Node-এ Replicate হয়।
+* প্রতিটি InnoDB Table-এ Primary Key নিশ্চিত করুন।
+* Mapping Table-এর জন্য Composite Primary Key ব্যবহার করুন।
+* Production-এ Restore করার আগে Staging Environment-এ পরীক্ষা করুন।
+* Restore শেষ হওয়ার পর অবশ্যই সব Secondary Node-এ Data Replication যাচাই করুন।
+
+
+
+# উপসংহার
+
+MySQL InnoDB Cluster-এ Logical Backup Restore করার সময় অধিকাংশ সমস্যা মাত্র তিনটি কারণে হয়ে থাকে—
+
+1. Dump File-এ `GTID_PURGED` থাকা।
+2. Restore চলাকালীন `SQL_LOG_BIN` বন্ধ হয়ে যাওয়া।
+3. কিছু Table-এ Primary Key না থাকা।
+
+Restore করার আগে Dump File সামান্য পরিবর্তন করলেই এই সমস্যাগুলো এড়ানো যায় এবং Group Replication-এর মাধ্যমে সকল Cluster Node-এ স্বয়ংক্রিয়ভাবে Data Synchronize হয়।
+
+Production Environment-এ Database Restore করার আগে Dump File যাচাই করা এবং একটি Staging Cluster-এ পরীক্ষা করা সর্বদা উত্তম অনুশীলন (Best Practice)।
