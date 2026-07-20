@@ -1,0 +1,253 @@
+# MySQL InnoDB Cluster-এর জন্য MySQL Router Installation ও Configuration Guide
+
+## ভূমিকা
+
+**MySQL Router** হলো MySQL InnoDB Cluster-এর একটি Lightweight Middleware, যা Application এবং Database Cluster-এর মধ্যে একটি Smart Proxy হিসেবে কাজ করে। এটি Application-কে Cluster Topology সম্পর্কে চিন্তা করতে দেয় না এবং স্বয়ংক্রিয়ভাবে বর্তমান Primary Node-এ Connection Forward করে।
+
+ফলে Cluster-এর Primary Server পরিবর্তন হলেও Application-এর Connection String পরিবর্তন করার প্রয়োজন হয় না।
+
+এই আর্টিকেলে MySQL Enterprise 8.4.x ব্যবহার করে MySQL Router Installation, Bootstrap Configuration এবং Verification ধাপে ধাপে দেখানো হয়েছে।
+
+
+
+# Environment
+
+| Component               | Value                  |
+| ----------- |-------- - |------------------------|
+| Operating System        | Rocky Linux 9.x        |
+| MySQL Version           | MySQL Enterprise 8.4.x |
+| Cluster Type            | MySQL InnoDB Cluster   |
+| Cluster Name            | ProductionCluster      |
+| Primary Database Server | 192.168.100.10         |
+| MySQL Port              | 3306                   |
+| Router Server           | 192.168.100.20         |
+
+
+
+# MySQL Router কী?
+
+MySQL Router একটি Lightweight Proxy Server যা—
+
+* Application-এর জন্য একটি Single Connection Endpoint প্রদান করে।
+* Cluster-এর বর্তমান Primary Server স্বয়ংক্রিয়ভাবে শনাক্ত করে।
+* Automatic Failover Support করে।
+* Read/Write এবং Read Only Connection আলাদা করে।
+* Application Configuration অপরিবর্তিত রাখে।
+* High Availability নিশ্চিত করে।
+
+
+
+# Step-1 : MySQL Router Installation
+
+Router Server-এ প্রথমে MySQL Enterprise Package Copy করুন।
+
+তারপর unzip Utility Install করুন।
+
+
+sudo dnf install -y unzip
+
+
+Package Extract করুন।
+
+
+unzip '*.zip'
+
+
+এরপর MySQL Router Install করুন।
+
+
+sudo dnf install mysql-router-commercial-8.4.x-1.el9.x86_64.rpm -y
+
+
+Installation সম্পন্ন হলে Router Bootstrap করার জন্য প্রস্তুত।
+
+
+
+# Step-2 : Bootstrap MySQL Router
+
+নিচের Command ব্যবহার করে Router-কে Cluster-এর সাথে Bootstrap করুন।
+
+
+sudo mysqlrouter \
+--bootstrap dbadmin@192.168.100.10:3306 \
+--user=mysqlrouter
+
+
+Bootstrap সফল হলে MySQL Router Cluster Metadata সংগ্রহ করে এবং Configuration File স্বয়ংক্রিয়ভাবে তৈরি করবে।
+
+নিচের মতো একটি Message দেখা যাবে—
+
+After this MySQL Router has been started with the generated configuration
+
+systemctl start mysqlrouter
+
+InnoDB Cluster 'ProductionCluster' can be reached by connecting to:
+
+MySQL Classic Protocol
+
+Read/Write Connections      : localhost:6446
+Read Only Connections       : localhost:6447
+Read/Write Split Connections: localhost:6450
+
+MySQL X Protocol
+
+Read/Write Connections      : localhost:6448
+Read Only Connections       : localhost:6449
+
+
+
+
+# MySQL Router Ports
+
+| Port | Purpose                 |
+| ---- | ----------------------- |
+| 6446 | Read / Write Connection |
+| 6447 | Read Only Connection    |
+| 6450 | Read / Write Split      |
+| 6448 | MySQL X Read / Write    |
+| 6449 | MySQL X Read Only       |
+
+Production Environment-এ অধিকাংশ Application শুধুমাত্র **6446** Port ব্যবহার করে।
+
+
+
+# Step-3 : Enable MySQL Router Service
+
+Server Restart-এর পর যেন Router স্বয়ংক্রিয়ভাবে চালু হয়, সেজন্য Service Enable করুন।
+
+
+sudo systemctl enable mysqlrouter
+
+
+Router Start করুন।
+
+
+sudo systemctl start mysqlrouter
+
+
+Service Status পরীক্ষা করুন।
+
+
+sudo systemctl status mysqlrouter
+
+
+Expected Output
+
+Active: active (running)
+
+
+
+
+# Step-4 : Install MySQL Client
+
+Router Server থেকেই Database Connectivity Test করার জন্য MySQL Client Install করুন।
+
+
+sudo dnf install \
+mysql-commercial-common-8.4.x-1.el9.x86_64.rpm \
+mysql-commercial-libs-8.4.x-1.el9.x86_64.rpm \
+mysql-commercial-client-plugins-8.4.x-1.el9.x86_64.rpm \
+mysql-commercial-client-8.4.x-1.el9.x86_64.rpm -y
+
+
+Installation Verify করুন।
+
+mysql --version
+
+
+# Step-5 : Verify Router Listening Ports
+
+Router সঠিকভাবে চলছে কিনা পরীক্ষা করুন।
+
+Read/Write Port
+
+
+ss -tulnp | grep 6446
+
+
+Read Only Port
+
+
+ss -tulnp | grep 6447
+
+
+যদি Port Listening অবস্থায় থাকে, তাহলে Router সফলভাবে চালু হয়েছে।
+
+
+
+# Step-6 : Connect Through MySQL Router
+
+Read/Write Endpoint ব্যবহার করে Cluster-এ Connect করুন।
+
+
+mysql \
+-u dbadmin \
+-p \
+-h 127.0.0.1 \
+-P 6446
+
+
+Password চাইলে Cluster Administrator Password প্রদান করুন।
+
+# Step-7 : Verify Connected Database Server
+
+Login করার পরে নিচের Query Execute করুন।
+
+
+SELECT @@hostname,
+       @@port;
+
+
+Example Output
+
++-+--+
+| @@hostname  | @@port |
++-+--+
+| db-node-01  | 3306   |
++-+--+
+
+
+এটি নিশ্চিত করবে যে Router বর্তমানে Cluster-এর Primary Node-এ Connection Forward করছে।
+
+
+
+# Failover Test
+
+Primary Database Server বন্ধ বা Fail হলে—
+
+* Cluster নতুন Primary নির্বাচন করবে।
+* MySQL Router স্বয়ংক্রিয়ভাবে নতুন Primary-তে Connection পাঠাবে।
+* Application-এর Connection String পরিবর্তনের প্রয়োজন হবে না।
+
+Application সর্বদা একই Endpoint ব্যবহার করবে।
+
+127.0.0.1:6446
+
+# MySQL Router ব্যবহারের সুবিধা
+
+* Automatic Primary Detection
+* Automatic Failover
+* Read/Write Routing
+* Read Only Routing
+* High Availability
+* Application Transparent Connectivity
+* Lightweight Architecture
+* সহজ Installation ও Configuration
+
+# Best Practices
+
+* MySQL Router Application Server-এ Install করা উত্তম।
+* Bootstrap করার জন্য Cluster Administrator Account ব্যবহার করুন।
+* Configuration File Manual Edit না করাই ভালো।
+* Service সর্বদা Enable অবস্থায় রাখুন।
+* Firewall-এ শুধুমাত্র প্রয়োজনীয় Port Open রাখুন।
+* নিয়মিত Router Log পর্যবেক্ষণ করুন।
+* Production Deployment-এর আগে Failover Test সম্পন্ন করুন।
+* Router-এর মাধ্যমে Connectivity Test করে Application Production-এ Publish করুন।
+
+
+# উপসংহার
+
+MySQL Router হলো MySQL InnoDB Cluster-এর High Availability Architecture-এর একটি গুরুত্বপূর্ণ অংশ। এটি Database Cluster-এর জটিলতা Application থেকে সম্পূর্ণভাবে আড়াল করে এবং Automatic Failover নিশ্চিত করে।
+
+যেসব প্রতিষ্ঠানে Mission Critical Application, Banking System, Payment Gateway অথবা Enterprise Database ব্যবহার করা হয়, তাদের জন্য MySQL Router একটি অপরিহার্য কম্পোনেন্ট। সঠিক Installation, Configuration এবং নিয়মিত Verification-এর মাধ্যমে একটি নির্ভরযোগ্য ও Highly Available Database Environment গড়ে তোলা সম্ভব।
